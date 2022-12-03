@@ -45,16 +45,6 @@ endif()
 
 add_library(gl3w_B ${GL3W_SRC})
 
-# find_package(glfw QUIET)
-
-# if(NOT glfw_FOUND)
-#   CPMAddPackage(
-#     NAME glfw
-#     GITHUB_REPOSITORY glfw/glfw
-#     GIT_TAG origin/master
-#   )
-# endif()
-
 # ImGui
 find_package(imgui QUIET)
 
