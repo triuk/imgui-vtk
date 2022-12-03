@@ -1,63 +1,78 @@
-cmake_minimum_required(VERSION 3.6 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.14.0 FATAL_ERROR)
 project(imgui-vtk)
 
 set(CMAKE_CXX_STANDARD 11)
-# set(CMAKE_VERBOSE_MAKEFILE 1)
-set(APP_VERSION_MAJOR 1)
-set(APP_VERSION_MINOR 0)
-set(EXEC_NAME imgui_vtk)
 
-# In this CMakeLists.txt file, components are all built separately and linked together
-# If you prefer to compile source files + dependencies (OpenGL loaders, imgui, VtkViewer, etc.)
-# together, please see CMakeLists-alt.txt
-add_executable(${EXEC_NAME} main.cpp)
+# CPM
+set(CPM_DOWNLOAD_VERSION 0.36.0)
+
+if(CPM_SOURCE_CACHE)
+  set(CPM_DOWNLOAD_LOCATION "${CPM_SOURCE_CACHE}/cpm/CPM_${CPM_DOWNLOAD_VERSION}.cmake")
+elseif(DEFINED ENV{CPM_SOURCE_CACHE})
+  set(CPM_DOWNLOAD_LOCATION "$ENV{CPM_SOURCE_CACHE}/cpm/CPM_${CPM_DOWNLOAD_VERSION}.cmake")
+else()
+  set(CPM_DOWNLOAD_LOCATION "${CMAKE_BINARY_DIR}/cmake/CPM_${CPM_DOWNLOAD_VERSION}.cmake")
+endif()
+
+if(NOT(EXISTS ${CPM_DOWNLOAD_LOCATION}))
+  message(STATUS "Downloading CPM.cmake to ${CPM_DOWNLOAD_LOCATION}")
+  file(DOWNLOAD
+    https://github.com/TheLartians/CPM.cmake/releases/download/v${CPM_DOWNLOAD_VERSION}/CPM.cmake
+    ${CPM_DOWNLOAD_LOCATION}
+  )
+endif()
+
+include(${CPM_DOWNLOAD_LOCATION})
 
 # OpenGL
 find_package(OpenGL REQUIRED)
-target_link_libraries(${EXEC_NAME} OpenGL::GL)
-if (APPLE)
-	# Ignore macOS OpenGL deprecation warnings
-	target_compile_definitions(${EXEC_NAME} PRIVATE GL_SILENCE_DEPRECATION)
+
+# gl3w
+CPMAddPackage(
+  NAME gl3w
+  GITHUB_REPOSITORY skaslev/gl3w
+  GIT_TAG origin/master
+  DOWNLOAD_ONLY
+)
+
+set(GL3W_DIR ${CPM_PACKAGE_gl3w_SOURCE_DIR})
+include_directories(${GL3W_DIR}/include)
+set(GL3W_SRC ${GL3W_DIR}/src/gl3w.c)
+
+if(NOT(EXISTS ${GL3W_SRC}))
+  execute_process(COMMAND python3 gl3w_gen.py WORKING_DIRECTORY ${GL3W_DIR})
 endif()
 
-# OpenGL Loader - GL3W
-# This can be replaced with your own OpenGL Loader
-# Either compile it as a static library like this example
-# Or add it to the source files for the main executable + imgui + vtkviewer
-set(gl3w_dir ${CMAKE_CURRENT_SOURCE_DIR}/gl3w)
-set(gl3w_inc ${gl3w_dir}/include)
-set(gl3w_src ${gl3w_dir}/src/gl3w.c)
-if (EXISTS ${gl3w_src})
-	message(STATUS "Found gl3w source files")
-else()
-	execute_process(COMMAND python3 gl3w_gen.py WORKING_DIRECTORY ${gl3w_dir}) # use python or python3
-	if (NOT EXISTS ${gl3w_src})
-		message(FATAL_ERROR "Could not generate gl3w source files")
-	endif()
+add_library(gl3w_B ${GL3W_SRC})
+
+# find_package(glfw QUIET)
+
+# if(NOT glfw_FOUND)
+#   CPMAddPackage(
+#     NAME glfw
+#     GITHUB_REPOSITORY glfw/glfw
+#     GIT_TAG origin/master
+#   )
+# endif()
+
+# ImGui
+find_package(imgui QUIET)
+
+if(NOT imgui_FOUND)
+  CPMAddPackage(
+    NAME imgui
+    GITHUB_REPOSITORY ocornut/imgui
+    GIT_TAG origin/docking
+  )
 endif()
-add_library(gl3w STATIC ${gl3w_src})
-target_include_directories(gl3w PUBLIC ${gl3w_inc})
-target_link_libraries(${EXEC_NAME} gl3w)
 
-# GLFW
-set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/glfw)
-target_link_libraries(${EXEC_NAME} glfw)
-
-# Dear ImGui
-set(imgui_dir ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
-file(GLOB imgui_src ${imgui_dir}/*.cpp)
-set(imgui_backend ${imgui_dir}/backends/imgui_impl_glfw.cpp ${imgui_dir}/backends/imgui_impl_opengl3.cpp)
-add_library(imgui STATIC ${imgui_src} ${imgui_backend})
-target_include_directories(imgui PUBLIC ${imgui_dir} ${imgui_dir}/backends)
-target_link_libraries(imgui glfw)
-target_link_libraries(${EXEC_NAME} imgui)
+set(IMGUI_DIR ${CPM_PACKAGE_imgui_SOURCE_DIR})
+include_directories(${IMGUI_DIR} ${IMGUI_DIR}/backends)
+set(IMGUI_SRC ${IMGUI_DIR}/imgui.cpp ${IMGUI_DIR}/imgui_demo.cpp ${IMGUI_DIR}/imgui_draw.cpp ${IMGUI_DIR}/imgui_tables.cpp ${IMGUI_DIR}/imgui_widgets.cpp ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp)
+add_library(imgui ${IMGUI_SRC})
 
 # VTK
-find_package(VTK COMPONENTS 
+find_package(VTK COMPONENTS
   CommonCore
   CommonColor
   CommonDataModel
@@ -69,34 +84,14 @@ find_package(VTK COMPONENTS
   RenderingOpenGL2
   QUIET
 )
-if (NOT VTK_FOUND)
-  message(FATAL_ERROR "VTK not found!")
-  return()
-endif()
-
-if (VTK_VERSION VERSION_LESS "9.0.0")
-  include(${VTK_USE_FILE})
-else()
-  # vtk_module_autoinit is needed
-  vtk_module_autoinit(
-    TARGETS ${EXEC_NAME}
-    MODULES ${VTK_LIBRARIES}
-  )
-endif()
-message (STATUS "VTK Version: ${VTK_VERSION}")
 
 # imgui-vtk (VTK Viewer class)
-set(imgui_vtk_viewer_dir ${CMAKE_CURRENT_SOURCE_DIR})
-add_library(imgui_vtk_viewer STATIC ${imgui_vtk_viewer_dir}/VtkViewer.cpp)
-target_include_directories(imgui_vtk_viewer PUBLIC ${imgui_vtk_viewer_dir})
-target_link_libraries(imgui_vtk_viewer gl3w) # Since gl3w was compiled as a static library, we need to link to it
-target_link_libraries(imgui_vtk_viewer imgui) # Since imgui was compiled as a static library, we need to link to it
+include_directories(src)
+add_library(imgui_vtk_viewer src/VtkViewer.cpp)
 target_link_libraries(imgui_vtk_viewer ${VTK_LIBRARIES})
-target_link_libraries(${EXEC_NAME} imgui_vtk_viewer)
 
-# GLFW is built from source in this example
-# But if you link dynamically, you may need to link some native libraries on macOS:
-# target_link_libraries(${EXEC_NAME} "-framework Cocoa" "-framework IOKit" "-framework CoreVideo")
-if (UNIX AND NOT APPLE)
-  target_link_libraries(${EXEC_NAME} ${CMAKE_THREAD_LIBS_INIT} ${X11_LIBRARIES} ${CMAKE_DL_LIBS})
-endif()
+# vtk_module_autoinit is needed
+vtk_module_autoinit(
+  TARGETS imgui_vtk_viewer
+  MODULES ${VTK_LIBRARIES}
+)
