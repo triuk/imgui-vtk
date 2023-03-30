@@ -29,13 +29,13 @@ find_package(OpenGL REQUIRED)
 
 # gl3w
 CPMAddPackage(
-  NAME gl3w
+  NAME gl3w_D
   GITHUB_REPOSITORY skaslev/gl3w
   GIT_TAG origin/master
   DOWNLOAD_ONLY
 )
 
-set(GL3W_DIR ${CPM_PACKAGE_gl3w_SOURCE_DIR})
+set(GL3W_DIR ${CPM_PACKAGE_gl3w_D_SOURCE_DIR})
 include_directories(${GL3W_DIR}/include)
 set(GL3W_SRC ${GL3W_DIR}/src/gl3w.c)
 
@@ -43,7 +43,7 @@ if(NOT(EXISTS ${GL3W_SRC}))
   execute_process(COMMAND python3 gl3w_gen.py WORKING_DIRECTORY ${GL3W_DIR})
 endif()
 
-add_library(gl3w_B ${GL3W_SRC})
+add_library(gl3w ${GL3W_SRC})
 
 # ImGui
 find_package(imgui QUIET)
